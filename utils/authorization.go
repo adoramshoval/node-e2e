@@ -2,6 +2,7 @@ package utils
 
 import (
     "os"
+    "github.com/sirupsen/logrus"
     "k8s.io/client-go/rest"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/clientcmd"
@@ -16,6 +17,7 @@ func Authenticate() (*kubernetes.Clientset, error) {
     // It's intended for clients that expect to be running inside a pod running on kubernetes.
     config, err = rest.InClusterConfig()
     if err != nil {
+	Logger.Errorf("Could not find inClusterConfig: %v\n", err)	
         // Fallback to kubeconfig
         kubeconfigPath := os.Getenv("KUBECONFIG")
         if kubeconfigPath != "" {
@@ -26,6 +28,7 @@ func Authenticate() (*kubernetes.Clientset, error) {
 	}
     
 	if err != nil {
+	    Logger.Errorf("Could not find a valid kubeconfig: %v\n", err)
 	    return nil, err
 	}
     }
@@ -33,9 +36,16 @@ func Authenticate() (*kubernetes.Clientset, error) {
     // Create the Kubernetes clientset
     clientset, err := kubernetes.NewForConfig(config)
     if err != nil {
+	Logger.Errorf("Could not create clientset for interfacing against the cluster: %v\n", err)
         return nil, err
     }
     
+    Logger.WithFields(logrus.Fields{
+    	"Host": config.Host,
+	"APIPath": config.APIPath,
+	"Username": config.Username,
+	"ImpersonatedUser": config.Impersonate.UserName,
+    }).Infof("Succussful authentication")
     return clientset, nil
 
 }	
