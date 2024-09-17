@@ -32,5 +32,8 @@ func main() {
         fmt.Printf("Pod %s created in namespace %s\n", result.Name, result.Namespace)
     }
 
+    tc := utils.GenerateDefaultTimeout()
+    podSpec, err := utils.GetPodWithTimeout(tc, clientset, namespace, podName)
+    fmt.Println(podSpec)
 
 }
