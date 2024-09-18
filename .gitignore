@@ -1,0 +1,27 @@
+# Ignore the go.sum file
+go.sum
+
+# Ignore binaries
+*.exe
+*.out
+*.dll
+*.so
+
+# Ignore build and temporary directories
+bin/
+obj/
+build/
+dist/
+
+# Ignore vendor directory (if you use vendoring)
+vendor/
+
+# Ignore editor or IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+*.log
+*.tmp
+*.lock
