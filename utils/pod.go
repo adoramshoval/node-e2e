@@ -2,10 +2,14 @@
 package utils
 
 import (
+	"fmt"
+	"reflect"
+
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/core/v1"
 	resource "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 func parseQuantity(value string, resourceName string) *resource.Quantity {
@@ -87,7 +91,31 @@ func CreatePodSpec(ns string, podName string, volumes []v1.Volume, containers ..
 //func CreatePod() {
 //
 //}
-//
-//func GetPod() {
-//
-//}
+
+func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string, podName string) (*v1.Pod, error) {
+	result, err := tc.DoWithTimeout(
+		func() (interface{}, bool) {
+			pod, err := clientset.CoreV1().Pods(namespace).Get(tc.Ctx, podName, metav1.GetOptions{})
+
+			if err != nil {
+				FailedToRetrievePodErrorLog(namespace, podName, err)
+				return nil, false
+			}
+
+			return pod, true
+		})
+
+	if err != nil {
+		FailedToRetrievePodErrorLog(namespace, podName, err)
+		return nil, err
+
+	} else if pod, ok := result.(*v1.Pod); ok {
+		SuccessfullyRetrievedPodLog(namespace, podName)
+		return pod, nil
+
+	} else {
+		UnexpectedTypeErrorLog("v1.pod", Uncapitalize(reflect.TypeOf(pod).String()))
+		return nil, fmt.Errorf("unexpected type %s", Uncapitalize(reflect.TypeOf(pod).String()))
+	}
+
+}

@@ -3,11 +3,6 @@ package utils
 import (
 	"context"
 	"time"
-
-	"github.com/sirupsen/logrus"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 )
 
 const (
@@ -16,68 +11,63 @@ const (
 )
 
 type TimeoutConfig struct {
-	Timeout    time.Duration
-	Tick	   time.Duration
+	Timeout time.Duration
+	Tick    time.Duration
+	Ctx     context.Context
+	Cancel  context.CancelFunc
 }
 
-func GenerateDefaultTimeout() (*TimeoutConfig) {
+func GenerateDefaultTimeout() *TimeoutConfig {
 
 	var timeout time.Duration = time.Duration(DefaultTimeout) * time.Second
 	var tickInterval time.Duration = time.Duration(DefaultTickInterval) * time.Second
 
 	return &TimeoutConfig{
-		Timeout: timeout, 
-		Tick: tickInterval, 
+		Timeout: timeout,
+		Tick:    tickInterval,
+		Ctx:     nil,
+		Cancel:  nil,
 	}
 }
 
-func (tc *TimeoutConfig) NewTimeoutContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+func (tc *TimeoutConfig) NewTimeoutContext(timeout time.Duration) {
+	if timeout <= 0 {
+		timeout = time.Duration(DefaultTimeout) * time.Second
+	}
 	// Set new timeout
 	tc.Timeout = timeout
 	// Set new timeout context and cancel function
-	ctx, cancel = context.WithTimeout(context.Background(), timeout)
-	return ctx, cancel
+	tc.Ctx, tc.Cancel = context.WithTimeout(context.Background(), timeout)
 }
 
-func DoWithTimeout(tc *TimeoutConfig, task func() (interface{}, bool)) (interface{}, error) {
-    // Set default values for Timeout and Tick if they're zero
-    if tc.Timeout == 0 {
-        tc.Timeout = time.Duration(DefaultTimeout) * time.Second
-    }
-    if tc.Tick == 0 {
-        tc.Tick = time.Duration(DefaultTickInterval) * time.Second
-    }
-    
-    ctx, cancel := tc.NewTimeoutContext(tc.Timeout, tc.Tick)
-    defer cancel()
-    
-    ticker := time.NewTicker(tc.Tick)
-    defer ticker.Stop()
+func (tc *TimeoutConfig) DoWithTimeout(task func() (interface{}, bool)) (interface{}, error) {
+	// Set default values for Tick if it is zero or lower
+	if tc.Tick <= 0 {
+		tc.Tick = time.Duration(DefaultTickInterval) * time.Second
+	}
 
-    for {
-        select {
-            case <-ctx.Done():
-	        return nil, ctx.Err()
-	    case <-ticker.C:
-		    if result, done := task(); done {
-		        return result, nil
+	// tc.Timeout should be zero if not set at struct initialization
+	tc.NewTimeoutContext(tc.Timeout)
+
+	// Defer cancellation of the context to ensure resources are released
+	defer func() {
+		tc.Cancel()
+		// Reset context and cancel func to nil after use
+		tc.Ctx = nil
+		tc.Cancel = nil
+	}()
+
+	ticker := time.NewTicker(tc.Tick)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-tc.Ctx.Done():
+			return nil, tc.Ctx.Err()
+		case <-ticker.C:
+			if result, done := task(); done {
+				return result, nil
+			}
 		}
 	}
-    }    
 }
-
-func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string, podName string) (*v1.Pod, bool) {
-
-	pod, err := clientset.CoreV1().Pods(namespace).Get(tc.Ctx, podName, metav1.GetOptions{})
-
-	if err != nil {
-		Logger.WithFields(logrus.Fields{
-			"namespace": namespace,
-			"podName":   podName,
-		}).Errorf("Failed to retrieve pod: %v", err)
-		return nil, false
-	}
-
-	return pod, true
-}
-
