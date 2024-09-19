@@ -17,49 +17,67 @@ const (
 
 type TimeoutConfig struct {
 	Timeout    time.Duration
-	Ctx        context.Context
-	CancelFunc context.CancelFunc
+	Tick	   time.Duration
 }
 
-func GenerateDefaultTimeout() *TimeoutConfig {
+func GenerateDefaultTimeout() (*TimeoutConfig) {
 
 	var timeout time.Duration = time.Duration(DefaultTimeout) * time.Second
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	var tickInterval time.Duration = time.Duration(DefaultTickInterval) * time.Second
 
-	return &TimeoutConfig{Timeout: timeout, Ctx: ctx, CancelFunc: cancel}
-}
-
-func (tc *TimeoutConfig) NewTimeoutContext(timeout time.Duration) {
-	tc.Timeout = timeout
-	tc.Ctx, tc.CancelFunc = context.WithTimeout(context.Background(), timeout)
-}
-
-func GetPodWithTimeout(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string, podName string) (*v1.Pod, error) {
-
-	if tc.Ctx == nil || tc.CancelFunc == nil && tc.Timeout != 0 {
-		tc.NewTimeoutContext(tc.Timeout)
-	} else {
-		tc = GenerateDefaultTimeout()
+	return &TimeoutConfig{
+		Timeout: timeout, 
+		Tick: tickInterval, 
 	}
+}
+
+func (tc *TimeoutConfig) NewTimeoutContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	// Set new timeout
+	tc.Timeout = timeout
+	// Set new timeout context and cancel function
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	return ctx, cancel
+}
+
+func DoWithTimeout(tc *TimeoutConfig, task func() (interface{}, bool)) (interface{}, error) {
+    // Set default values for Timeout and Tick if they're zero
+    if tc.Timeout == 0 {
+        tc.Timeout = time.Duration(DefaultTimeout) * time.Second
+    }
+    if tc.Tick == 0 {
+        tc.Tick = time.Duration(DefaultTickInterval) * time.Second
+    }
+    
+    ctx, cancel := tc.NewTimeoutContext(tc.Timeout, tc.Tick)
+    defer cancel()
+    
+    ticker := time.NewTicker(tc.Tick)
+    defer ticker.Stop()
+
+    for {
+        select {
+            case <-ctx.Done():
+	        return nil, ctx.Err()
+	    case <-ticker.C:
+		    if result, done := task(); done {
+		        return result, nil
+		}
+	}
+    }    
+}
+
+func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string, podName string) (*v1.Pod, bool) {
 
 	pod, err := clientset.CoreV1().Pods(namespace).Get(tc.Ctx, podName, metav1.GetOptions{})
 
-	// ticker := time.NewTicker(tc.TickInterval)
-
-	defer tc.CancelFunc()
-
-	//    for i := 0; i < tc.Timeout.Seconds() / tc.TickInterval.Seconds(); i++ {
-	//        select {
-	//            case <-ticker.C:
-	//                pod, err := clientset.CoreV1().Pods(namespace).Get(tc.Ctx, podName, metav1.GetOptions{})
-	//	}
-	//    }
 	if err != nil {
 		Logger.WithFields(logrus.Fields{
 			"namespace": namespace,
 			"podName":   podName,
 		}).Errorf("Failed to retrieve pod: %v", err)
-		return nil, err
+		return nil, false
 	}
-	return pod, nil
+
+	return pod, true
 }
+

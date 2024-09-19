@@ -5,6 +5,7 @@ import (
     "fmt"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "node-e2e/utils"
+    v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -34,6 +35,9 @@ func main() {
 
     tc := utils.GenerateDefaultTimeout()
     podSpec, err := utils.GetPodWithTimeout(tc, clientset, namespace, podName)
-    fmt.Println(podSpec)
-
+    for _, condition := range podSpec.Status.Conditions {
+        if condition.Type == v1.PodReady && condition.Status == v1.ConditionTrue {
+            utils.Logger.Infof("Pod running ready: %s, %s", condition.Type, condition.Status)
+	}
+    }
 }
