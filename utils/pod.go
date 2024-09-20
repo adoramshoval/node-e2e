@@ -119,3 +119,5 @@ func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string
 	}
 
 }
+
+// func IsPodRunningReady(pod *v1.Pod)
