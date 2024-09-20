@@ -40,10 +40,9 @@ func main() {
 		fmt.Println(pod)
 	}
 
-	// podSpec, err := utils.GetPodWithTimeout(tc, clientset, namespace, podName)
 	// for _, condition := range podSpec.Status.Conditions {
 	//     if condition.Type == v1.PodReady && condition.Status == v1.ConditionTrue {
 	//         utils.Logger.Infof("Pod running ready: %s, %s", condition.Type, condition.Status)
-	// }
+	// 	}
 	// }
 }

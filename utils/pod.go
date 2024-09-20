@@ -120,4 +120,16 @@ func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string
 
 }
 
-// func IsPodRunningReady(pod *v1.Pod)
+func IsPodRunningReady(pod *v1.Pod) bool {
+	condition := GetPodCondition(pod.Status, v1.PodReady)
+	return condition != nil && condition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning
+}
+
+func GetPodCondition(status v1.PodStatus, condType v1.PodConditionType) *v1.PodCondition {
+	for i := range status.Conditions {
+		if status.Conditions[i].Type == condType {
+			return &status.Conditions[i]
+		}
+	}
+	return nil
+}
