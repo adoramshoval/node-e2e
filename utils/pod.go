@@ -120,6 +120,26 @@ func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string
 
 }
 
+func WaitForPodRunningReady(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string, podName string) error {
+	_, err := tc.DoWithTimeout(
+		func() (interface{}, bool) {
+			// GetPod initialized with a different TimeoutConfig to ensure a different timeout context is used for fetching the pod
+			pod, err := GetPod(&TimeoutConfig{}, clientset, namespace, podName)
+			if err != nil {
+				return nil, false
+			}
+			return nil, IsPodRunningReady(pod)
+		})
+
+	if err != nil {
+		FailedToRetrievePodErrorLog(namespace, podName, err)
+		return err
+	}
+
+	return nil
+
+}
+
 func IsPodRunningReady(pod *v1.Pod) bool {
 	condition := GetPodCondition(pod.Status, v1.PodReady)
 	return condition != nil && condition.Status == v1.ConditionTrue && pod.Status.Phase == v1.PodRunning
