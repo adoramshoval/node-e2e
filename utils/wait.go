@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	DefaultTimeout      int64 = 60
-	DefaultTickInterval int64 = 1
+	DefaultTimeout      int64 = 10
+	DefaultTickInterval int64 = 2
 )
 
 type TimeoutConfig struct {
@@ -46,8 +46,10 @@ func (tc *TimeoutConfig) DoWithTimeout(task func() (interface{}, bool)) (interfa
 		tc.Tick = time.Duration(DefaultTickInterval) * time.Second
 	}
 
-	// tc.Timeout should be zero if not set at struct initialization
-	tc.NewTimeoutContext(tc.Timeout)
+	if tc.Ctx == nil || tc.Cancel == nil {
+		// tc.Timeout should be zero if not set at struct initialization
+		tc.NewTimeoutContext(tc.Timeout)
+	}
 
 	// Defer cancellation of the context to ensure resources are released
 	defer func() {
@@ -59,6 +61,11 @@ func (tc *TimeoutConfig) DoWithTimeout(task func() (interface{}, bool)) (interfa
 
 	ticker := time.NewTicker(tc.Tick)
 	defer ticker.Stop()
+
+	// First execution of the task before the tick starts
+	if result, done := task(); done {
+		return result, nil
+	}
 
 	for {
 		select {

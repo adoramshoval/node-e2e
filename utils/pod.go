@@ -123,8 +123,8 @@ func GetPod(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string
 func WaitForPodRunningReady(tc *TimeoutConfig, clientset *kubernetes.Clientset, namespace string, podName string) error {
 	_, err := tc.DoWithTimeout(
 		func() (interface{}, bool) {
-			// GetPod initialized with a different TimeoutConfig to ensure a different timeout context is used for fetching the pod
-			pod, err := GetPod(&TimeoutConfig{}, clientset, namespace, podName)
+			// GetPod initialized with the same TimeoutConfig to ensure total timeout context used for checking pod readiness is the same
+			pod, err := GetPod(tc, clientset, namespace, podName)
 			if err != nil {
 				return nil, false
 			}
