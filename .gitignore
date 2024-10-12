@@ -25,3 +25,4 @@ vendor/
 *.log
 *.tmp
 *.lock
+test
