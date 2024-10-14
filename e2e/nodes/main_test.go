@@ -4,14 +4,16 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const (
-	namespace string = "default"
-	resources string = "Nodes"
+	namespace    string        = "default"
+	resourceType string        = "Nodes"
+	fetchTimeout time.Duration = 30 * time.Second
 )
 
 var testsEnvironment = env.New()
