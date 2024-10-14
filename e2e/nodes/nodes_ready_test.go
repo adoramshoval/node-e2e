@@ -2,7 +2,9 @@ package nodes_test
 
 import (
 	"context"
+	"fmt"
 	"node-e2e/utils"
+	"reflect"
 	"testing"
 
 	v1 "k8s.io/api/core/v1"
@@ -45,17 +47,44 @@ func TestNodesReadiness(t *testing.T) {
 		Assess("All nodes system components are latest version", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 			// True if there is a diff in one of the nodes
 			var diff bool
+			var diffList []string
 			// Take the system info of the first node as a reference
 			refSystemInfo := nodesList.Items[0].Status.NodeInfo
 
+			// Create a slice of field names to compare
+			fieldNames := []string{
+				"KernelVersion",
+				"OSImage",
+				"ContainerRuntimeVersion",
+				"KubeletVersion",
+				"OperatingSystem",
+				"Architecture",
+			}
+
 			// Compare the system info of each node with the reference
 			for _, node := range nodesList.Items[1:] { // Start from the second node
-				systemInfo := node.Status.NodeInfo
+				t.Logf("Comparing %s vs %s", nodesList.Items[0].Name, node.Name)
 
-				if attrDiff, ok := utils.SystemInfoDifference(&refSystemInfo, &systemInfo); !ok {
-					t.Errorf("Node %s has different SystemInfo than the reference node %s", node.Name, nodesList.Items[0].Name)
-					diff = true
-					for _, d := range attrDiff {
+				// Reinitialize diffList to empty for each node iteration
+				diffList = []string{}
+
+				systemInfo := node.Status.NodeInfo
+				refNodeVal := reflect.ValueOf(refSystemInfo)
+				nodeVal := reflect.ValueOf(systemInfo)
+
+				for _, fieldName := range fieldNames {
+					refField := refNodeVal.FieldByName(fieldName)
+					nodeField := nodeVal.FieldByName(fieldName)
+
+					if refField.IsValid() && nodeField.IsValid() && refField.String() != nodeField.String() {
+						diffList = append(diffList, fmt.Sprintf("%s differs: %s vs %s", fieldName, refField.String(), nodeField.String()))
+						diff = true
+					}
+				}
+
+				// Print differences if any
+				if len(diffList) > 0 {
+					for _, d := range diffList {
 						t.Log(d)
 					}
 				}
