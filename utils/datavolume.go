@@ -1,69 +1,101 @@
 package utils
 
 import (
-	"fmt"
-
 	corev1 "k8s.io/api/core/v1"
-	resource "k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubev1 "kubevirt.io/api/core/v1"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 )
 
-func GenerateDataVolumeTemplateSpec(storageRequests string) (*cdiv1beta1.DataVolumeSpec, error) {
-	parsedStorageRequests, err := resource.ParseQuantity(storageRequests)
-	if err != nil {
-		return nil, fmt.Errorf("could not parse storage requests %v", storageRequests)
-	}
+type DataVolumeData struct {
+	DVSource         *cdiv1beta1.DataVolumeSource
+	PVAccessMode     string
+	StorageRequests  string
+	PVMode           string
+	StorageClassName string
+}
 
-	dataVolumeSpec := cdiv1beta1.DataVolumeSpec{
-		Source: &cdiv1beta1.DataVolumeSource{
-			HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
-				URL: "https://example.com/disk-image.img",
-			},
+func GenerateDataVolumeTemplateSpec(dvname string, dvdata DataVolumeData) *kubev1.DataVolumeTemplateSpec {
+	dvts := kubev1.DataVolumeTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: dvname,
 		},
+		Spec: *GenerateDataVolumeSpec(dvdata),
+	}
+	return &dvts
+}
+
+func GenerateDataVolume(dvname, ns string, dvdata DataVolumeData) *cdiv1beta1.DataVolume {
+	dv := cdiv1beta1.DataVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      dvname,
+			Namespace: ns,
+		},
+		Spec: *GenerateDataVolumeSpec(dvdata),
+	}
+	return &dv
+}
+
+func GenerateDataVolumeSpec(dvdata DataVolumeData) *cdiv1beta1.DataVolumeSpec {
+	dataVolumeSpec := cdiv1beta1.DataVolumeSpec{
+		Source: dvdata.DVSource,
 		PVC: &corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.ReadWriteOnce,
+				corev1.PersistentVolumeAccessMode(dvdata.PVAccessMode),
 			},
 			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: parsedStorageRequests,
-				},
+				Requests: *GenerateResourceList("", "", dvdata.StorageRequests, ""),
 			},
+			StorageClassName: &dvdata.StorageClassName,
+			VolumeMode:       (*corev1.PersistentVolumeMode)(&dvdata.PVMode),
 		},
-		PriorityClassName: "high-priority",
-		ContentType:       cdiv1beta1.DataVolumeKubeVirt, // Content type is "kubevirt"
-		Preallocation:     boolPtr(true),
+		ContentType: cdiv1beta1.DataVolumeKubeVirt, // Content type is "kubevirt"
 	}
-	return &dataVolumeSpec, nil
+	return &dataVolumeSpec
 }
 
-func GenerateDataVolumeSourceHTTP()
-
-// Helper function to create a bool pointer
-func boolPtr(b bool) *bool {
-	return &b
+func GenerateDataVolumeSourceHTTP(sourceURL string) *cdiv1beta1.DataVolumeSource {
+	dvsource := &cdiv1beta1.DataVolumeSource{
+		HTTP: &cdiv1beta1.DataVolumeSourceHTTP{
+			URL: sourceURL,
+		},
+	}
+	return dvsource
 }
 
-/*
-Example DataVolumeTemplateSpec list for a VM
-spec:
-  dataVolumeTemplates:
-    - apiVersion: cdi.kubevirt.io/v1beta1
-      kind: DataVolume
-      metadata:
-        creationTimestamp: null
-        name: rhel7-9-8bwxw5
-      spec:
-        source:
-          pvc:
-            name: rhel7-9-az-b
-            namespace: openshift-virtualization-os-images
-        storage:
-          accessModes:
-            - ReadWriteMany
-          resources:
-            requests:
-              storage: 15Gi
-          storageClassName: az-b
-          volumeMode: Block
-*/
+func GenerateDataVolumeSourceRegistry(sourceURL, pullMethod *string) *cdiv1beta1.DataVolumeSource {
+	dvsource := &cdiv1beta1.DataVolumeSource{
+		Registry: &cdiv1beta1.DataVolumeSourceRegistry{
+			URL:        sourceURL,
+			PullMethod: (*cdiv1beta1.RegistryPullMethod)(pullMethod),
+		},
+	}
+	return dvsource
+}
+
+func GenerateDataVolumeSourcePVC(namespace, pvcName string) *cdiv1beta1.DataVolumeSource {
+	dvsource := &cdiv1beta1.DataVolumeSource{
+		PVC: &cdiv1beta1.DataVolumeSourcePVC{
+			Namespace: namespace,
+			Name:      pvcName,
+		},
+	}
+	return dvsource
+}
+
+func GenerateDataVolumeBlank() *cdiv1beta1.DataVolumeSource {
+	dvsource := &cdiv1beta1.DataVolumeSource{
+		Blank: &cdiv1beta1.DataVolumeBlankImage{},
+	}
+	return dvsource
+}
+
+func DataVolumeSourceSnapshot(namespace, volumeSnapshotName string) *cdiv1beta1.DataVolumeSource {
+	dvsource := &cdiv1beta1.DataVolumeSource{
+		Snapshot: &cdiv1beta1.DataVolumeSourceSnapshot{
+			Namespace: namespace,
+			Name:      volumeSnapshotName,
+		},
+	}
+	return dvsource
+}
