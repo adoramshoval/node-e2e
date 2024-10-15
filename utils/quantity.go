@@ -49,7 +49,7 @@ func multiplyQuantity(q *resource.Quantity, factor int64) *resource.Quantity {
 }
 
 // Usually the ratio between CPU requests and CPU limits is 1:4
-func getCPULimitsFromRequests(requests string) string {
+func GetCPULimitsFromRequests(requests string) string {
 	var q resource.Quantity
 	var limits string
 

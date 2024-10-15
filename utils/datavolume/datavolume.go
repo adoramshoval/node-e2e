@@ -1,6 +1,8 @@
-package utils
+package datavolume
 
 import (
+	"node-e2e/utils"
+
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubev1 "kubevirt.io/api/core/v1"
@@ -44,7 +46,7 @@ func GenerateDataVolumeSpec(dvdata DataVolumeData) *cdiv1beta1.DataVolumeSpec {
 				corev1.PersistentVolumeAccessMode(dvdata.PVAccessMode),
 			},
 			Resources: corev1.VolumeResourceRequirements{
-				Requests: *GenerateResourceList("", "", dvdata.StorageRequests, ""),
+				Requests: *utils.GenerateResourceList("", "", dvdata.StorageRequests, ""),
 			},
 			StorageClassName: &dvdata.StorageClassName,
 			VolumeMode:       (*corev1.PersistentVolumeMode)(&dvdata.PVMode),
@@ -90,7 +92,7 @@ func GenerateDataVolumeBlank() *cdiv1beta1.DataVolumeSource {
 	return dvsource
 }
 
-func DataVolumeSourceSnapshot(namespace, volumeSnapshotName string) *cdiv1beta1.DataVolumeSource {
+func GenerateDataVolumeSourceSnapshot(namespace, volumeSnapshotName string) *cdiv1beta1.DataVolumeSource {
 	dvsource := &cdiv1beta1.DataVolumeSource{
 		Snapshot: &cdiv1beta1.DataVolumeSourceSnapshot{
 			Namespace: namespace,
