@@ -11,9 +11,9 @@ import (
 
 type DataVolumeData struct {
 	DVSource         *cdiv1beta1.DataVolumeSource
-	PVAccessMode     string
+	PVAccessMode     corev1.PersistentVolumeAccessMode
 	StorageRequests  string
-	PVMode           string
+	PVMode           corev1.PersistentVolumeMode
 	StorageClassName string
 }
 
@@ -43,13 +43,13 @@ func GenerateDataVolumeSpec(dvdata DataVolumeData) *cdiv1beta1.DataVolumeSpec {
 		Source: dvdata.DVSource,
 		PVC: &corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{
-				corev1.PersistentVolumeAccessMode(dvdata.PVAccessMode),
+				dvdata.PVAccessMode,
 			},
 			Resources: corev1.VolumeResourceRequirements{
 				Requests: *utils.GenerateResourceList("", "", dvdata.StorageRequests, ""),
 			},
 			StorageClassName: &dvdata.StorageClassName,
-			VolumeMode:       (*corev1.PersistentVolumeMode)(&dvdata.PVMode),
+			VolumeMode:       &dvdata.PVMode,
 		},
 		ContentType: cdiv1beta1.DataVolumeKubeVirt, // Content type is "kubevirt"
 	}

@@ -13,8 +13,8 @@ type VMDomainSpec struct {
 	Cores          uint32
 	Sockets        uint32
 	Threads        uint32
-	Disks          []kubev1.Disk
-	Interfaces     []kubev1.Interface
+	disks          []kubev1.Disk
+	interfaces     []kubev1.Interface
 }
 
 type VMISpec struct {
@@ -37,8 +37,23 @@ type VMISpec struct {
 	// Allowing only DataVolume, CloudInitNoCloud
 	// - GenerateVolume
 	// - GenerateCloudInitNoCloudVolume
-	Volumes  []kubev1.Volume
+	Volumes  []Volume
 	Networks []Network
+}
+
+type VMSpec struct {
+	VMISpec     VMISpec
+	Running     bool
+	RunStrategy kubev1.VirtualMachineRunStrategy
+	DataVolumes []dv.DataVolumeData
+}
+
+type VM struct {
+	VMName      string
+	Namespace   string
+	VMSpec      VMSpec
+	Labels      map[string]string
+	Annotations map[string]string
 }
 
 type Network struct {
@@ -49,20 +64,20 @@ type Network struct {
 
 type NetworkType string
 
-type VMSpec struct {
-	VMISpec     VMISpec
-	Running     bool
-	RunStrategy kubev1.VirtualMachineRunStrategy
-	DataVolumes []dv.DataVolumeData
-}
-
-type VM struct {
-	VMName    string
-	Namespace string
-	VMSpec    VMSpec
-}
-
 const (
 	BridgeNetwork     NetworkType = "Bridge"
 	MasqueradeNetwork NetworkType = "Masquerade"
+)
+
+type Volume struct {
+	Name      string
+	Type      VolumeType
+	Bootorder *uint
+}
+
+type VolumeType string
+
+const (
+	DataVolume       VolumeType = "DataVolume"
+	CloudInitNoCloud VolumeType = "CloudInitNoCloud"
 )

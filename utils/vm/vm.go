@@ -19,36 +19,45 @@ func GenerateVirtualMachine(v VM) *kubev1.VirtualMachine {
 			APIVersion: "kubevirt.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      v.VMName,
-			Namespace: v.Namespace,
+			Name:        v.VMName,
+			Namespace:   v.Namespace,
+			Labels:      v.Labels,
+			Annotations: v.Annotations,
 		},
-		Spec: *generateVirtualMachineSpec(v.VMName, v.Namespace, v.VMSpec),
+		Spec: *generateVirtualMachineSpec(v.VMName, v.Namespace, v.Labels, v.VMSpec),
 	}
 	return &vm
 }
 
-func generateVirtualMachineSpec(vmname, ns string, vmspec VMSpec) *kubev1.VirtualMachineSpec {
+func generateVirtualMachineSpec(vmname, ns string, labels map[string]string, vmspec VMSpec) *kubev1.VirtualMachineSpec {
 	var dvTemplates []kubev1.DataVolumeTemplateSpec
-	var counter int
+	var counter uint = 1
 
 	for _, d := range vmspec.DataVolumes {
-		dvTemplates = append(dvTemplates, *dv.GenerateDataVolumeTemplateSpec(fmt.Sprintf("%s-%d", vmname, counter), d))
+		// Generate unique name for each DV
+		var volName string = fmt.Sprintf("%s-%d", vmname, counter)
+		// Generate DVs
+		dvTemplates = append(dvTemplates, *dv.GenerateDataVolumeTemplateSpec(volName, d))
+		bootOrder := counter
+		// Create Volume structs for later kubev1.Volume and kubev1.Disk generation
+		vmspec.VMISpec.Volumes = append(vmspec.VMISpec.Volumes, Volume{Name: volName, Type: DataVolume, Bootorder: &bootOrder})
 		counter++
 	}
 
 	vms := kubev1.VirtualMachineSpec{
 		Running:             &vmspec.Running,
 		DataVolumeTemplates: dvTemplates,
-		Template:            generateVirtualMachineInstanceTemplateSpec(vmname, ns, vmspec.VMISpec),
+		Template:            generateVirtualMachineInstanceTemplateSpec(vmname, ns, labels, vmspec.VMISpec),
 	}
 	return &vms
 }
 
-func generateVirtualMachineInstanceTemplateSpec(vmname, ns string, vmispec VMISpec) *kubev1.VirtualMachineInstanceTemplateSpec {
+func generateVirtualMachineInstanceTemplateSpec(vmname, ns string, labels map[string]string, vmispec VMISpec) *kubev1.VirtualMachineInstanceTemplateSpec {
 	vmits := kubev1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vmname,
 			Namespace: ns,
+			Labels:    labels,
 		},
 		Spec: *generateVirtualmachineInstanceSpec(vmname, ns, vmispec),
 	}
@@ -57,10 +66,27 @@ func generateVirtualMachineInstanceTemplateSpec(vmname, ns string, vmispec VMISp
 
 func generateVirtualmachineInstanceSpec(vmname, ns string, vmispec VMISpec) *kubev1.VirtualMachineInstanceSpec {
 	var networks []kubev1.Network
+	var volumes []kubev1.Volume
 	var nodeSelector map[string]string
 
 	for _, net := range vmispec.Networks {
+		// Generate kubev1.Network list
 		networks = append(networks, generateNetwork(ns, net))
+		// Generate kubev1.Interrace list based on the network list as they are based on the defined network
+		vmispec.VMDomainSpec.interfaces = append(vmispec.VMDomainSpec.interfaces, generateInterface(net.Name, net.Type))
+	}
+
+	var defaultCloudInitNoCloud Volume = Volume{Name: "cloudinit", Type: CloudInitNoCloud}
+	vmispec.Volumes = append(vmispec.Volumes, defaultCloudInitNoCloud)
+
+	for _, vol := range vmispec.Volumes {
+		if vol.Type == DataVolume {
+			volumes = append(volumes, generateVolume(vol.Name))
+			vmispec.VMDomainSpec.disks = append(vmispec.VMDomainSpec.disks, generateDisk(vol.Name, vol.Bootorder))
+		} else if vol.Type == CloudInitNoCloud {
+			volumes = append(volumes, generateCloudInitNoCloudVolume(vol.Name))
+			vmispec.VMDomainSpec.disks = append(vmispec.VMDomainSpec.disks, generateDisk(vol.Name, nil))
+		}
 	}
 
 	nodeSelector = make(map[string]string)
@@ -80,7 +106,7 @@ func generateVirtualmachineInstanceSpec(vmname, ns string, vmispec VMISpec) *kub
 		TopologySpreadConstraints:     vmispec.TopologySpreadConstraints,
 		EvictionStrategy:              vmispec.EvictionStrategy,
 		TerminationGracePeriodSeconds: vmispec.TerminationGracePeriodSeconds,
-		Volumes:                       vmispec.Volumes,
+		Volumes:                       volumes,
 		LivenessProbe:                 vmispec.LivenessProbe,
 		ReadinessProbe:                vmispec.ReadinessProbe,
 	}
@@ -99,8 +125,8 @@ func generateDomainSpec(domain VMDomainSpec) *kubev1.DomainSpec {
 			Threads: domain.Threads,
 		},
 		Devices: kubev1.Devices{
-			Disks:                      domain.Disks,
-			Interfaces:                 domain.Interfaces,
+			Disks:                      domain.disks,
+			Interfaces:                 domain.interfaces,
 			NetworkInterfaceMultiQueue: func(b bool) *bool { return &b }(true),
 			Rng:                        &kubev1.Rng{},
 		},
@@ -118,7 +144,7 @@ func generateDomainSpec(domain VMDomainSpec) *kubev1.DomainSpec {
 
 // Basic Disk creation with disk device using vitio bus.
 // There are many more options but for the purpose of testing this might be enough.
-func GenerateDisk(devName string, bootorder *uint) kubev1.Disk {
+func generateDisk(devName string, bootorder *uint) kubev1.Disk {
 	return kubev1.Disk{
 		Name: devName,
 		DiskDevice: kubev1.DiskDevice{
@@ -131,21 +157,20 @@ func GenerateDisk(devName string, bootorder *uint) kubev1.Disk {
 }
 
 // interfaceBindingMethod being "bridge" or otherwise default to Masquerade interface
-func GenerateInterface(ifName, interfaceBindingMethod string) kubev1.Interface {
+func generateInterface(ifName string, interfaceBindingMethod NetworkType) kubev1.Interface {
 	var iface kubev1.Interface
-	if strings.ToLower(interfaceBindingMethod) == "bridge" {
+	if interfaceBindingMethod == BridgeNetwork {
 		iface = *kubev1.DefaultBridgeNetworkInterface()
-		iface.Name = ifName
 	} else {
 		// Default to masquerade
 		iface = *kubev1.DefaultMasqueradeNetworkInterface()
-		iface.Name = ifName
 	}
-
+	iface.Name = ifName
+	iface.Model = "virtio"
 	return iface
 }
 
-func GenerateVolume(name string) kubev1.Volume {
+func generateVolume(name string) kubev1.Volume {
 	volume := kubev1.Volume{
 		Name: name,
 		VolumeSource: kubev1.VolumeSource{
@@ -159,7 +184,7 @@ func GenerateVolume(name string) kubev1.Volume {
 
 // This func allows only setting cloud-user password and SSH authorized keys
 // and not the full functionality of cloud-init
-func GenerateCloudInitNoCloudVolume(name string) kubev1.Volume {
+func generateCloudInitNoCloudVolume(name string) kubev1.Volume {
 	volume := kubev1.Volume{
 		Name: name,
 		VolumeSource: kubev1.VolumeSource{
@@ -186,15 +211,14 @@ func generateNetwork(ns string, net Network) kubev1.Network {
 	network := kubev1.DefaultPodNetwork()
 	if net.Type == BridgeNetwork {
 		if net.NADName != nil {
-			network.Name = net.Name
 			network.NetworkSource = kubev1.NetworkSource{
 				Multus: &kubev1.MultusNetwork{
+					// Format <namespace>/<nad-name> or <nad-name>
 					NetworkName: fmt.Sprintf("%s/%s", ns, *net.NADName),
 				},
 			}
 		} else {
-			// If NADName is not provided but vlan is True, network Name is assumed as the NAD name
-			network.Name = net.Name
+			// If NADName is not provided but NetworkType "Bridge" is provided, network Name is assumed as the NAD name
 			network.NetworkSource = kubev1.NetworkSource{
 				Multus: &kubev1.MultusNetwork{
 					NetworkName: fmt.Sprintf("%s/%s", ns, net.Name),

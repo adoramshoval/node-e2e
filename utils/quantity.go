@@ -22,17 +22,19 @@ func parseQuantity(value string) *resource.Quantity {
 
 func GenerateResourceList(cpu, memory, storage, ephStorage string) *corev1.ResourceList {
 	var resourceList corev1.ResourceList
+
+	resourceList = make(corev1.ResourceList)
 	if parsedCpu, err := resource.ParseQuantity(cpu); err == nil {
 		resourceList[corev1.ResourceCPU] = parsedCpu
 	}
 	if parsedMemory, err := resource.ParseQuantity(memory); err == nil {
-		resourceList[corev1.ResourceCPU] = parsedMemory
+		resourceList[corev1.ResourceMemory] = parsedMemory
 	}
 	if parsedStorage, err := resource.ParseQuantity(storage); err == nil {
-		resourceList[corev1.ResourceCPU] = parsedStorage
+		resourceList[corev1.ResourceStorage] = parsedStorage
 	}
 	if parsedEphStorage, err := resource.ParseQuantity(ephStorage); err == nil {
-		resourceList[corev1.ResourceCPU] = parsedEphStorage
+		resourceList[corev1.ResourceEphemeralStorage] = parsedEphStorage
 	}
 	return &resourceList
 }
