@@ -11,9 +11,11 @@ import (
 )
 
 const (
-	namespace    string = "core"
-	vmNamePrefix string = "node-e2e"
-	osImagePVC   string = "rhel7-9-az-a"
+	namespace           string = "core"
+	vmNamePrefix        string = "node-e2e"
+	osImagePVC          string = "rhel7-9-az-a"
+	pollIntervalSeconds int64  = 10
+	pollTimeoutMinutes  int64  = 5
 )
 
 var testsEnvironment = env.New()
