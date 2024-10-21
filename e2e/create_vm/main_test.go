@@ -11,13 +11,16 @@ import (
 )
 
 const (
-	namespace    string = "core"
-	vmNamePrefix string = "node-e2e"
-	osImagePVC   string = "rhel7-9-az-a"
+	namespace           string = "core"
+	vmNamePrefix        string = "node-e2e"
+	osImagePVC          string = "rhel7-9-az-a"
+	pollIntervalSeconds int64  = 10
+	pollTimeoutMinutes  int64  = 5
 )
 
 var testsEnvironment = env.New()
-var vmname string
+var vmname string = envconf.RandomName(vmNamePrefix, 13) // Generate a random VM name
+// Label VM and VMI
 var labels map[string]string = map[string]string{
 	"kubevirt.io/domain": vmname,
 }
@@ -31,9 +34,6 @@ func TestMain(m *testing.M) {
 
 		// Assign the generated client to the Config's client attribute
 		config.WithClient(client)
-
-		// Generate a random VM name
-		vmname = envconf.RandomName(vmNamePrefix, 13)
 
 		// Add kubevirt.io v1 to runtime scheme
 		kubev1.AddToScheme(config.Client().Resources().GetScheme())

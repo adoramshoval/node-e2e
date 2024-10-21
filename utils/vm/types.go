@@ -19,6 +19,8 @@ type VMDomainSpec struct {
 
 type VMISpec struct {
 	VMDomainSpec VMDomainSpec
+	Labels       map[string]string
+	Annotations  map[string]string
 	// Allows node or AZ selector only
 	NodeName *string
 	AZ       *string

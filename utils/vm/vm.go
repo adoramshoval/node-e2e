@@ -24,12 +24,12 @@ func GenerateVirtualMachine(v VM) *kubev1.VirtualMachine {
 			Labels:      v.Labels,
 			Annotations: v.Annotations,
 		},
-		Spec: *generateVirtualMachineSpec(v.VMName, v.Namespace, v.Labels, v.VMSpec),
+		Spec: *generateVirtualMachineSpec(v.VMName, v.Namespace, v.VMSpec),
 	}
 	return &vm
 }
 
-func generateVirtualMachineSpec(vmname, ns string, labels map[string]string, vmspec VMSpec) *kubev1.VirtualMachineSpec {
+func generateVirtualMachineSpec(vmname, ns string, vmspec VMSpec) *kubev1.VirtualMachineSpec {
 	var dvTemplates []kubev1.DataVolumeTemplateSpec
 	var counter uint = 1
 
@@ -47,17 +47,18 @@ func generateVirtualMachineSpec(vmname, ns string, labels map[string]string, vms
 	vms := kubev1.VirtualMachineSpec{
 		Running:             &vmspec.Running,
 		DataVolumeTemplates: dvTemplates,
-		Template:            generateVirtualMachineInstanceTemplateSpec(vmname, ns, labels, vmspec.VMISpec),
+		Template:            generateVirtualMachineInstanceTemplateSpec(vmname, ns, vmspec.VMISpec),
 	}
 	return &vms
 }
 
-func generateVirtualMachineInstanceTemplateSpec(vmname, ns string, labels map[string]string, vmispec VMISpec) *kubev1.VirtualMachineInstanceTemplateSpec {
+func generateVirtualMachineInstanceTemplateSpec(vmname, ns string, vmispec VMISpec) *kubev1.VirtualMachineInstanceTemplateSpec {
 	vmits := kubev1.VirtualMachineInstanceTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      vmname,
-			Namespace: ns,
-			Labels:    labels,
+			Name:        vmname,
+			Namespace:   ns,
+			Labels:      vmispec.Labels,
+			Annotations: vmispec.Annotations,
 		},
 		Spec: *generateVirtualmachineInstanceSpec(vmname, ns, vmispec),
 	}
