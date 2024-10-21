@@ -42,9 +42,13 @@ func TestKubeConfigFromFlags(t *testing.T) {
 		Assess("Test creating a KubeConfig file from provided flags", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 			a := New()
 			a.WithNamespace(namespace)
-			if err := NewKubeConfigFromFlags(a); err != nil {
+
+			kcPath, err := NewKubeConfigFromFlags(a)
+			if err != nil {
 				t.Fatal(err)
 			}
+
+			t.Logf("Path of the created KubeConfig file: %s", kcPath)
 			return ctx
 		}).Feature()
 
@@ -61,9 +65,13 @@ func TestKubeConfigFromStruct(t *testing.T) {
 			a.WithClusterEndpoint("https://api.medone-0.med.one:6443")
 			a.WithClusterName("medone-0")
 			a.WithNamespace(namespace)
-			if err := NewKubeConfig(a); err != nil {
+
+			kcPath, err := NewKubeConfig(a)
+			if err != nil {
 				t.Fatal(err)
 			}
+
+			t.Logf("Path of the created KubeConfig file: %s", kcPath)
 			return ctx
 		}).Feature()
 

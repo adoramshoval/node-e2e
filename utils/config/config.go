@@ -95,25 +95,25 @@ func init() {
 	flag.StringVar(&dirName, flagDirName, "", "Directory name where the KubeConfig file will be stored (e.g testdata). By default KubeConfig will be stored at the user's home directory")
 }
 
-func NewKubeConfig(a *authenticationAttr) error {
+func NewKubeConfig(a *authenticationAttr) (string, error) {
 	// Check if all required attributes are provided
 	if a.saName == "" || a.saToken == "" || a.clusterEndpoint == "" {
-		return errors.New("saName, saToken and clusterEndpoint must be provided")
+		return "", errors.New("saName, saToken and clusterEndpoint must be provided")
 	}
 
 	kubeConfig := a.genKubeConfig()
-	err := a.saveKubeConfig(kubeConfig)
+	path, err := a.saveKubeConfig(kubeConfig)
 
-	return err
+	return path, err
 }
 
-func NewKubeConfigFromFlags(a *authenticationAttr) error {
+func NewKubeConfigFromFlags(a *authenticationAttr) (string, error) {
 	// Parse the flags
 	flag.Parse()
 
 	// Check if all required flags are provided
 	if saToken == "" || saName == "" || clusterEndpoint == "" {
-		return errors.New("sa-name, sa-token and cluster-endpoint flags must be provided")
+		return "", errors.New("sa-name, sa-token and cluster-endpoint flags must be provided")
 	}
 
 	if a == nil {
@@ -166,11 +166,11 @@ func (a *authenticationAttr) genKubeConfig() *KubeConfig {
 	return &kubeConfig
 }
 
-func (a *authenticationAttr) saveKubeConfig(kc *KubeConfig) error {
+func (a *authenticationAttr) saveKubeConfig(kc *KubeConfig) (string, error) {
 	// Convert kubeconfig to YAML
 	kubeConfigYAML, err := yaml.Marshal(kc)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	home := homedir.HomeDir()
@@ -180,15 +180,15 @@ func (a *authenticationAttr) saveKubeConfig(kc *KubeConfig) error {
 
 	err = os.MkdirAll(kubeconfigdir, 0o777)
 	if err != nil {
-		return fmt.Errorf("failed to create KubeConfig directory %s: %v", kubeconfigdir, err)
+		return "", fmt.Errorf("failed to create KubeConfig directory %s: %v", kubeconfigdir, err)
 	}
 
 	err = createFile(kubeconfigpath, kubeConfigYAML)
 	if err != nil {
-		return fmt.Errorf("failed to create KubeConfig config file %s: %v", kubeconfigpath, err)
+		return "", fmt.Errorf("failed to create KubeConfig config file %s: %v", kubeconfigpath, err)
 	}
 
-	return nil
+	return kubeconfigpath, nil
 }
 
 func (a *authenticationAttr) WithClusterName(cn string) *authenticationAttr {

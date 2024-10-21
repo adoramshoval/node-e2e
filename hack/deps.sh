@@ -1,3 +1,5 @@
+#! /bin/bash
+
 # Install Kubernetes client-go matching your cluster version
 go get k8s.io/client-go@v0.25.12
 go get k8s.io/apimachinery@v0.25.12
