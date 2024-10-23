@@ -150,6 +150,7 @@ func FindToken(name, ns string) func(ctx context.Context, c *envconf.Config) (st
 }
 
 // Since the *rest.Config does not store the ServiceAccount name, we are bound to use a replacement
+// Returns a escalation.ServiceAccount with a random name
 func GetCurrent() func(ctx context.Context, c *envconf.Config) *ServiceAccount {
 	return func(ctx context.Context, c *envconf.Config) *ServiceAccount {
 		username := c.Client().RESTConfig().Username
