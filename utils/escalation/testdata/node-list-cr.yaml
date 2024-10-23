@@ -1,0 +1,19 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-viewer
+rules:
+  # Allow access to nodes
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  # Allow access to other required API groups (such as listing API groups)
+  - apiGroups: ["", "discovery.k8s.io", "metrics.k8s.io"]
+    resources: ["nodes", "nodes/metrics", "nodes/proxy", "nodes/stats"]
+    verbs: ["get", "list", "watch"]
+  # Optional, for permissions on accessing API discovery and group resources
+  - apiGroups: ["", "extensions", "apps"]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/healthz", "/version", "/apis"]
+    verbs: ["get"]
