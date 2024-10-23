@@ -84,7 +84,7 @@ func TestMain(m *testing.M) {
 
 func setupTestEnvironment(ctx context.Context, c *envconf.Config) (context.Context, error) {
 	// Create a ServiceAccount and assign a ClusterRole
-	s, err := NewServiceAccount(saName, namespace)(ctx, c)
+	s, err := escalation.NewServiceAccount(saName, namespace)(ctx, c)
 	if err != nil {
 		return ctx, err
 	}
@@ -101,7 +101,7 @@ func setupTestEnvironment(ctx context.Context, c *envconf.Config) (context.Conte
 	}
 
 	// Switch to the new ServiceAccount
-	_, err = SwitchAccount(newAcc)(ctx, c)
+	_, err = escalation.SwitchAccount(newAcc)(ctx, c)
 	if err != nil {
 		return ctx, err
 	}
@@ -111,7 +111,7 @@ func setupTestEnvironment(ctx context.Context, c *envconf.Config) (context.Conte
 
 func teardownTestEnvironment(ctx context.Context, c *envconf.Config) (context.Context, error) {
 	// Switch back to the original ServiceAccount and clean up resources
-	_, err := SwitchAccount(prevAcc)(ctx, c)
+	_, err := escalation.SwitchAccount(prevAcc)(ctx, c)
 	if err != nil {
 		return ctx, err
 	}
