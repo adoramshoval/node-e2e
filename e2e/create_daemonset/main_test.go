@@ -61,8 +61,7 @@ func TestResourceCreationFromFiles(t *testing.T) {
 			// Read the template file with placeholders
 			templateData, err := os.ReadFile("testdata/daemon-manager-crb.yaml")
 			if err != nil {
-				fmt.Print(err)
-				os.Exit(1)
+				t.Fatal(err)
 			}
 			// Fill the blanks
 			templatedCRB, err := template.Template(map[string]interface{}{"namespace": namespace}, templateData)
