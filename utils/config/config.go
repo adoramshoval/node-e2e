@@ -1,22 +1,26 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 	"k8s.io/client-go/util/homedir"
 )
 
+// Flags' name
 const (
-	flagSAName          = "sa-name"
-	flagSAToken         = "sa-token"
-	flagClusterName     = "cluster-name"
-	flagClusterEndpoint = "cluster-endpoint"
-	flagDirName         = "dir-name"
+	flagSAName                   = "sa-name"
+	flagSAToken                  = "sa-token"
+	flagClusterName              = "cluster-name"
+	flagClusterEndpoint          = "cluster-endpoint"
+	flagCertificateAuthorityData = "certificate-authority-data"
+	flagDirName                  = "dir-name"
 )
 
 const (
@@ -24,21 +28,24 @@ const (
 	defaultContextName string = "default-context"
 )
 
+// Variables to store data provided from flags
 var (
-	saName          string
-	saToken         string
-	clusterName     string
-	clusterEndpoint string
-	dirName         string
+	saName                         string
+	saToken                        string
+	clusterName                    string
+	clusterEndpoint                string
+	certificateAuthorityDataBase64 string
+	dirName                        string
 )
 
-type authenticationAttr struct {
-	clusterName     string
-	clusterEndpoint string
-	namespace       string
-	saName          string
-	saToken         string
-	dirName         string
+type AuthenticationAttr struct {
+	clusterName              string
+	clusterEndpoint          string
+	certificateAuthorityData string
+	namespace                string
+	saName                   string
+	saToken                  string
+	dirName                  string
 }
 
 type ClusterInfo struct {
@@ -80,25 +87,38 @@ type KubeConfig struct {
 	CurrentContext string    `yaml:"current-context"`
 }
 
-func New() *authenticationAttr {
-	return &authenticationAttr{
-		dirName: defaultDirName,
-	}
-}
-
 func init() {
 	// Define flags
 	flag.StringVar(&saName, flagSAName, "", "ServiceAccount name")
 	flag.StringVar(&saToken, flagSAToken, "", "ServiceAccount token for authentication")
 	flag.StringVar(&clusterName, flagClusterName, "", "Kubernetes cluster name")
 	flag.StringVar(&clusterEndpoint, flagClusterEndpoint, "", "Kubernetes cluster API server endpoint")
+	flag.StringVar(&certificateAuthorityDataBase64, flagCertificateAuthorityData, "", "Base64 decoded value as a string of the API certificate authority")
 	flag.StringVar(&dirName, flagDirName, "", "Directory name where the KubeConfig file will be stored (e.g testdata). By default KubeConfig will be stored at the user's home directory")
 }
 
-func NewKubeConfig(a *authenticationAttr) (string, error) {
+func New() *AuthenticationAttr {
+	return &AuthenticationAttr{
+		dirName: defaultDirName,
+	}
+}
+
+func NewKubeConfig(a *AuthenticationAttr) (string, error) {
 	// Check if all required attributes are provided
-	if a.saName == "" || a.saToken == "" || a.clusterEndpoint == "" {
-		return "", errors.New("saName, saToken and clusterEndpoint must be provided")
+	if a.saName == "" || a.saToken == "" || a.clusterEndpoint == "" || a.certificateAuthorityData == "" {
+		return "", errors.New("saName, saToken, clusterEndpoint and certificateAuthorityData must be provided")
+	}
+
+	// Validate and fix CA data
+	fixedCert, err := validateAndFixBase64(a.certificateAuthorityData)
+	if err != nil {
+		return "", fmt.Errorf("certificate authority data is invalid: %v", err)
+	}
+	a.WithCertificateAuthorityData(fixedCert)
+
+	// Set default namespace if not already set
+	if a.namespace == "" {
+		a.WithNamespace(getNamespace(a.namespace))
 	}
 
 	kubeConfig := a.genKubeConfig()
@@ -107,13 +127,13 @@ func NewKubeConfig(a *authenticationAttr) (string, error) {
 	return path, err
 }
 
-func NewKubeConfigFromFlags(a *authenticationAttr) (string, error) {
+func NewKubeConfigFromFlags(a *AuthenticationAttr) (string, error) {
 	// Parse the flags
 	flag.Parse()
 
 	// Check if all required flags are provided
-	if saToken == "" || saName == "" || clusterEndpoint == "" {
-		return "", errors.New("sa-name, sa-token and cluster-endpoint flags must be provided")
+	if saToken == "" || saName == "" || clusterEndpoint == "" || certificateAuthorityDataBase64 == "" {
+		return "", errors.New("sa-name, sa-token, cluster-endpoint and certificate-authority-data flags must be provided")
 	}
 
 	if a == nil {
@@ -122,6 +142,7 @@ func NewKubeConfigFromFlags(a *authenticationAttr) (string, error) {
 	a.WithSAName(saName)
 	a.WithSAToken(saToken)
 	a.WithClusterEndpoint(clusterEndpoint)
+	a.WithCertificateAuthorityData(certificateAuthorityDataBase64)
 	a.WithClusterName(clusterName)
 	if dirName != "" {
 		a.WithDirName(dirName)
@@ -130,7 +151,7 @@ func NewKubeConfigFromFlags(a *authenticationAttr) (string, error) {
 	return NewKubeConfig(a)
 }
 
-func (a *authenticationAttr) genKubeConfig() *KubeConfig {
+func (a *AuthenticationAttr) genKubeConfig() *KubeConfig {
 	// Create the kubeconfig struct
 	kubeConfig := KubeConfig{
 		APIVersion: "v1",
@@ -139,7 +160,8 @@ func (a *authenticationAttr) genKubeConfig() *KubeConfig {
 			{
 				Name: getClusterName(a.clusterName),
 				Cluster: ClusterInfo{
-					Server: a.clusterEndpoint,
+					Server:                   a.clusterEndpoint,
+					CertificateAuthorityData: a.certificateAuthorityData,
 				},
 			},
 		},
@@ -157,7 +179,7 @@ func (a *authenticationAttr) genKubeConfig() *KubeConfig {
 				Context: ContextInfo{
 					Cluster:   getClusterName(a.clusterName),
 					User:      a.saName,
-					Namespace: getNamespace(a.namespace),
+					Namespace: a.namespace,
 				},
 			},
 		},
@@ -166,7 +188,7 @@ func (a *authenticationAttr) genKubeConfig() *KubeConfig {
 	return &kubeConfig
 }
 
-func (a *authenticationAttr) saveKubeConfig(kc *KubeConfig) (string, error) {
+func (a *AuthenticationAttr) saveKubeConfig(kc *KubeConfig) (string, error) {
 	// Convert kubeconfig to YAML
 	kubeConfigYAML, err := yaml.Marshal(kc)
 	if err != nil {
@@ -191,34 +213,51 @@ func (a *authenticationAttr) saveKubeConfig(kc *KubeConfig) (string, error) {
 	return kubeconfigpath, nil
 }
 
-func (a *authenticationAttr) WithClusterName(cn string) *authenticationAttr {
+func (a *AuthenticationAttr) WithClusterName(cn string) *AuthenticationAttr {
 	a.clusterName = cn
 	return a
 }
 
-func (a *authenticationAttr) WithClusterEndpoint(ce string) *authenticationAttr {
+func (a *AuthenticationAttr) WithClusterEndpoint(ce string) *AuthenticationAttr {
 	a.clusterEndpoint = ce
 	return a
 }
 
-func (a *authenticationAttr) WithSAName(san string) *authenticationAttr {
+func (a *AuthenticationAttr) WithCertificateAuthorityData(cad string) *AuthenticationAttr {
+	a.certificateAuthorityData = cad
+	return a
+}
+
+func (a *AuthenticationAttr) WithSAName(san string) *AuthenticationAttr {
 	a.saName = san
 	return a
 }
 
-func (a *authenticationAttr) WithSAToken(sat string) *authenticationAttr {
+func (a *AuthenticationAttr) WithSAToken(sat string) *AuthenticationAttr {
 	a.saToken = sat
 	return a
 }
 
-func (a *authenticationAttr) WithDirName(dn string) *authenticationAttr {
+func (a *AuthenticationAttr) WithDirName(dn string) *AuthenticationAttr {
 	a.dirName = dn
 	return a
 }
 
-func (a *authenticationAttr) WithNamespace(n string) *authenticationAttr {
+func (a *AuthenticationAttr) WithNamespace(n string) *AuthenticationAttr {
 	a.namespace = n
 	return a
+}
+
+func (a *AuthenticationAttr) GetServiceAccountName() string {
+	return a.saName
+}
+
+func (a *AuthenticationAttr) GetServiceAccountToken() string {
+	return a.saToken
+}
+
+func (a *AuthenticationAttr) GetServiceAccountNamespace() string {
+	return a.namespace
 }
 
 func getNamespace(n string) string {
@@ -237,4 +276,24 @@ func getClusterName(cn string) string {
 
 func createFile(path string, data []byte) error {
 	return os.WriteFile(path, data, 0o644)
+}
+
+func validateAndFixBase64(encodedData string) (string, error) {
+	// First, sanitize the input
+	sanitizedData := sanitizeInput(encodedData)
+
+	// Try to decode it
+	decodedData, err := base64.StdEncoding.DecodeString(sanitizedData)
+	if err != nil {
+		return "", fmt.Errorf("invalid base64 data: %v", err)
+	}
+
+	// If decoding succeeds, re-encode it properly
+	return base64.StdEncoding.EncodeToString(decodedData), nil
+}
+
+// sanitizeInput removes unnecessary whitespace, newlines, and other formatting issues
+func sanitizeInput(encodedData string) string {
+	// Remove any spaces or newlines
+	return strings.TrimSpace(encodedData)
 }
