@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -20,12 +21,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/e2e-framework/klient"
 	"sigs.k8s.io/e2e-framework/klient/decoder"
+	"sigs.k8s.io/e2e-framework/klient/k8s"
+	"sigs.k8s.io/e2e-framework/klient/wait"
+	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
 const (
 	saNameAnnot         string = "kubernetes.io/service-account.name"
 	defaultSANamePrefix string = "test-sa"
+	pollTimeoutMinutes  int64  = 1
+	pollIntervalSeconds int64  = 3
 )
 
 type ServiceAccount struct {
@@ -57,9 +63,12 @@ func NewServiceAccount(name, ns string) func(ctx context.Context, c *envconf.Con
 		var servacc *corev1.ServiceAccount = genDefaultServiceAccount(name, ns)
 
 		// Create the ServiceAccount
-		if err := c.Client().Resources(ns).Create(ctx, servacc); !apierrors.IsAlreadyExists(err) {
+		if err := c.Client().Resources(ns).Create(ctx, servacc); !apierrors.IsAlreadyExists(err) && err != nil {
 			return nil, err
 		}
+
+		// Wait until ServiceAccount has been created
+		waitForObjectsCreation([]k8s.Object{servacc})(ctx, c)
 
 		// Find the SA's token
 		token, err := FindToken(name, ns)(ctx, c)
@@ -198,22 +207,26 @@ func (s *ServiceAccount) CleanUp(crPath string) func(ctx context.Context, c *env
 		if err := decoder.Decode(bytes.NewReader(data), cr); err != nil {
 			return err
 		}
-
 		// Attemt to delete the ClusterRole with the decoded value
 		if err := c.Client().Resources().Delete(ctx, cr); err != nil {
-			return err
+			return fmt.Errorf("error while deleting ClusterRole: %s: %v", cr.ObjectMeta.GetName(), err)
 		}
 
 		crb := genDefaultClusterRoleBinding(s.name, s.namespace, cr.ObjectMeta.GetName())
-
 		// Attemt to delete the ClusterRoleBinding
 		if err := c.Client().Resources(s.namespace).Delete(ctx, crb); err != nil {
-			return err
+			return fmt.Errorf("error while deleting ClusterRoleBinding: %s: %v", crb.ObjectMeta.GetName(), err)
 		}
+
+		sa := genDefaultServiceAccount(s.name, s.namespace)
 		// Attempt to delete the ServiceAccount
-		if err := c.Client().Resources(s.namespace).Delete(ctx, &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: s.name, Namespace: s.namespace}}); err != nil {
+		if err := c.Client().Resources(s.namespace).Delete(ctx, sa); err != nil {
 			return fmt.Errorf("error while deleting ServiceAccount: %s: %v", s.name, err)
 		}
+
+		objList := []k8s.Object{cr, crb, sa}
+
+		waitForObjectsDeletion(objList)(ctx, c)
 
 		return nil
 	}
@@ -223,6 +236,7 @@ func (s *ServiceAccount) CleanUp(crPath string) func(ctx context.Context, c *env
 // to the passed ServiceAccount
 func (s *ServiceAccount) AssignClusterRole(crPath string) func(ctx context.Context, c *envconf.Config) error {
 	return func(ctx context.Context, c *envconf.Config) error {
+
 		if !filepath.IsAbs(crPath) {
 			return fmt.Errorf("absulute path must be provided, got %s", crPath)
 		}
@@ -241,16 +255,44 @@ func (s *ServiceAccount) AssignClusterRole(crPath string) func(ctx context.Conte
 		}
 
 		// Attemt to create the ClusterRole with the decoded value
-		if err := c.Client().Resources().Create(ctx, cr); !apierrors.IsAlreadyExists(err) {
+		if err := c.Client().Resources().Create(ctx, cr); !apierrors.IsAlreadyExists(err) && err != nil {
 			return err
 		}
 
 		crb := genDefaultClusterRoleBinding(s.name, s.namespace, cr.ObjectMeta.GetName())
 		// Attemt to create the ClusterRoleBinding
-		if err := c.Client().Resources(s.namespace).Create(ctx, crb); !apierrors.IsAlreadyExists(err) {
+		if err := c.Client().Resources(s.namespace).Create(ctx, crb); !apierrors.IsAlreadyExists(err) && err != nil {
 			return err
 		}
 
+		waitForObjectsCreation([]k8s.Object{cr, crb})(ctx, c)
+
+		return nil
+	}
+}
+
+func waitForObjectsCreation(objList []k8s.Object) func(ctx context.Context, c *envconf.Config) error {
+	return func(ctx context.Context, c *envconf.Config) error {
+		for _, obj := range objList {
+			if err := wait.For(conditions.New(c.Client().Resources()).ResourceMatch(obj, func(object k8s.Object) bool { return true }),
+				wait.WithTimeout(time.Duration(pollTimeoutMinutes)*time.Minute),
+				wait.WithInterval(time.Duration(pollIntervalSeconds)*time.Second)); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+}
+
+func waitForObjectsDeletion(objList []k8s.Object) func(ctx context.Context, c *envconf.Config) error {
+	return func(ctx context.Context, c *envconf.Config) error {
+		for _, obj := range objList {
+			if err := wait.For(conditions.New(c.Client().Resources()).ResourceDeleted(obj),
+				wait.WithTimeout(time.Minute*time.Duration(pollTimeoutMinutes)),
+				wait.WithInterval(time.Duration(pollIntervalSeconds)*time.Second)); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 }
