@@ -3,7 +3,7 @@ package nodes_test
 import (
 	"context"
 	"fmt"
-	"node-e2e/utils"
+	utils "node-e2e/utils/node"
 	"reflect"
 	"testing"
 
