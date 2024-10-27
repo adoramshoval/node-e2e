@@ -3,9 +3,11 @@ package nodes_test
 import (
 	"context"
 	"fmt"
-	utils "node-e2e/utils/node"
 	"reflect"
 	"testing"
+	"time"
+
+	utils "node-e2e/utils/node"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -20,7 +22,7 @@ func TestNodesReadiness(t *testing.T) {
 		WithLabel("type", "Nodes").
 		Assess("All nodes can be listed", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 
-			if err := c.Client().Resources(namespace).List(ctx, &nodesList, resources.WithTimeout(fetchTimeout)); err != nil {
+			if err := c.Client().Resources(namespace).List(ctx, &nodesList, resources.WithTimeout(time.Duration(pollTimeoutMinutes))); err != nil {
 				t.Fatal(err)
 			}
 			t.Logf("Got %v %s", len(nodesList.Items), resourceType)

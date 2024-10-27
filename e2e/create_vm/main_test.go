@@ -2,8 +2,12 @@ package createvm
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
+
+	"node-e2e/utils/escalation"
+	"node-e2e/utils/tests"
 
 	kubev1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/e2e-framework/pkg/env"
@@ -11,36 +15,58 @@ import (
 )
 
 const (
-	namespace           string = "core"
+	saName              string = "vm-creator"
+	namespace           string = "default"
 	vmNamePrefix        string = "node-e2e"
 	osImagePVC          string = "rhel7-9-az-a"
 	pollIntervalSeconds int64  = 10
 	pollTimeoutMinutes  int64  = 5
+	crPath              string = "testdata/vm-controller.yaml"
 )
 
-var testsEnvironment = env.New()
-var vmname string = envconf.RandomName(vmNamePrefix, 13) // Generate a random VM name
-// Label VM and VMI
-var labels map[string]string = map[string]string{
-	"kubevirt.io/domain": vmname,
-}
+var (
+	testsEnvironment env.Environment
+	vmname           string = envconf.RandomName(vmNamePrefix, 13) // Generate a random VM name
+	// Label VM and VMI
+	labels map[string]string = map[string]string{
+		"kubevirt.io/domain": vmname,
+	}
+	privAcc *escalation.ServiceAccount
+	newAcc  *escalation.ServiceAccount
+)
 
 func TestMain(m *testing.M) {
-	testsEnvironment.Setup(func(ctx context.Context, config *envconf.Config) (context.Context, error) {
-		client, err := config.NewClient()
+	e, a, err := tests.StartWithServiceAccountFlags(namespace)
+	if err != nil {
+		fmt.Print(err)
+		os.Exit(1)
+	}
+	testsEnvironment = e
+	privAcc = a
+
+	testsEnvironment.Setup(func(ctx context.Context, c *envconf.Config) (context.Context, error) {
+		a, newCtx, err := tests.SetupWithAccountSwitch(saName, namespace, crPath)(ctx, c)
+		ctx = newCtx
 		if err != nil {
-			return ctx, err
+			fmt.Printf("Setup failure: %v", err)
+			os.Exit(1)
 		}
+		newAcc = a
 
-		// Assign the generated client to the Config's client attribute
-		config.WithClient(client)
-
-		// Add kubevirt.io v1 to runtime scheme
-		kubev1.AddToScheme(config.Client().Resources().GetScheme())
+		// Add kubevirt.io to runtime scheme for later interaction with API groups it provides
+		kubev1.AddToScheme(c.Client().Resources().GetScheme())
 
 		return ctx, nil
 	})
+	testsEnvironment.Finish(func(ctx context.Context, c *envconf.Config) (context.Context, error) {
+		newCtx, err := tests.FinishWithAccountRollback(privAcc, newAcc, crPath)(ctx, c)
+		ctx = newCtx
+		if err != nil {
+			return ctx, err
+		}
+		return ctx, nil
+	})
 
-	// Don't forget to launch the package test
-	os.Exit(testsEnvironment.Run(m))
+	rc := testsEnvironment.Run(m)
+	os.Exit(rc)
 }

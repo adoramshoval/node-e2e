@@ -119,7 +119,6 @@ func SetupWithAccountSwitch(saName, namespace, crPath string) func(ctx context.C
 		if err != nil {
 			return nil, ctx, err
 		}
-		fmt.Print(absCRPath)
 		// Assign the ClusterRole to the newly create ServiceAccount using the current, privileged, account
 		if err := newAcc.AssignClusterRole(absCRPath)(ctx, c); err != nil {
 			return nil, ctx, err
