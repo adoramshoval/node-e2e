@@ -13,14 +13,18 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
+const (
+	namespace string = "default" // For some reason DS creation does not work on namespace core and works on default - TODO: Create namespace per test
+	saName    string = "daemon-manager"
+	crPath    string = "testdata/daemon-manager-cr.yaml"
+	testImage string = "quay.med.one:8443/openshift/ubi8/ubi"
+)
+
 var (
 	testsEnvironment env.Environment
-	namespace        string            = "default" // For some reason DS creation does not work on namespace core and works on default - TODO: Create namespace per test
-	saName           string            = "daemon-manager"
-	workloadName     string            = "daemonset-test"
-	crPath           string            = "testdata/daemon-manager-cr.yaml"
+	workloadName     string            = envconf.RandomName(saName, 20)
 	testLabels       map[string]string = map[string]string{
-		"test": envconf.RandomName(saName, 20),
+		"test": workloadName,
 	}
 	pollIntervalSeconds int64 = 10
 	pollTimeoutMinutes  int64 = 2

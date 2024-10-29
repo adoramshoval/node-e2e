@@ -2,10 +2,12 @@ package createdaemonset_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"node-e2e/utils"
+	selector "node-e2e/utils/label_selector"
 	"node-e2e/utils/pod"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -24,9 +26,9 @@ func TestDaemonSetCreation(t *testing.T) {
 	var requestsMemory string = "256Mi"
 
 	// Define corev1.PodSpec
-	ps := pod.CreatePodSpec(nil, pod.CreateContainerSpec(
+	ps := pod.GenDefaultPodSpec(nil, *pod.GenDefaultContainer(
 		workloadName,
-		"quay.med.one:8443/openshift/ubi8/ubi",
+		testImage,
 		nil,
 		nil,
 		corev1.ResourceRequirements{
@@ -37,7 +39,17 @@ func TestDaemonSetCreation(t *testing.T) {
 	))
 
 	// Define DaemonSet itself and use that struct for later operations against the cluster
-	ds := genDefaultDS(workloadName, saName, namespace, testLabels, *ps)
+	ds := genDefaultDS(workloadName, namespace, selector.GenMatchLabels(testLabels), testLabels, *ps)
+	// Set ServiceAccount name
+	ds.Spec.Template.Spec.ServiceAccountName = saName
+	// Set tolerations
+	ds.Spec.Template.Spec.Tolerations = []corev1.Toleration{
+		{
+			Key:      "",       // Empty to match all taint keys
+			Operator: "Exists", // "Exists" to match any taint value
+			Effect:   "",       // Empty to match all taint effects (NoSchedule, PreferNoSchedule, NoExecute)
+		},
+	}
 
 	feat := features.New("DaemonSet Creation and Interaction").
 		WithLabel("type", "DaemonSet").
@@ -61,7 +73,7 @@ func TestDaemonSetCreation(t *testing.T) {
 			t.Logf("DaemonSet %s is ready and deployed a pod on each available node", ds.ObjectMeta.GetName())
 			return ctx
 		}).
-		Assess("DaemonSet was able to get deleted", func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
+		Teardown(func(ctx context.Context, t *testing.T, c *envconf.Config) context.Context {
 			// Delete the DaemonSet itself
 			if err := c.Client().Resources(namespace).Delete(ctx, ds); err != nil {
 				t.Fatal(err)
@@ -76,7 +88,7 @@ func TestDaemonSetCreation(t *testing.T) {
 
 			// Fetch the underlying pod list
 			var podList corev1.PodList
-			if err := c.Client().Resources(namespace).List(ctx, &podList, resources.WithLabelSelector("test=daemonset-test")); err != nil {
+			if err := c.Client().Resources(namespace).List(ctx, &podList, resources.WithLabelSelector(getFirstlabel(testLabels))); err != nil {
 				t.Fatal(err)
 			}
 
@@ -96,32 +108,31 @@ func TestDaemonSetCreation(t *testing.T) {
 }
 
 // Helper function to generate DaemonSet configuration
-func genDefaultDS(name, saName, namespace string, selectorLabels map[string]string, podSpec corev1.PodSpec) *appsv1.DaemonSet {
+func genDefaultDS(name, namespace string, labelsSelector *metav1.LabelSelector, podLabels map[string]string, podSpec corev1.PodSpec) *appsv1.DaemonSet {
 	ds := &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
 		},
 		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{
-				MatchLabels: selectorLabels,
-			},
+			Selector: labelsSelector,
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:   name,
-					Labels: selectorLabels,
+					Labels: podLabels,
 				},
 				Spec: podSpec,
 			},
 		},
 	}
-	ds.Spec.Template.Spec.ServiceAccountName = saName
-	ds.Spec.Template.Spec.Tolerations = []corev1.Toleration{
-		{
-			Key:      "",       // Empty to match all taint keys
-			Operator: "Exists", // "Exists" to match any taint value
-			Effect:   "",       // Empty to match all taint effects (NoSchedule, PreferNoSchedule, NoExecute)
-		},
-	}
 	return ds
+}
+
+func getFirstlabel(lables map[string]string) string {
+	var label string
+	for key, value := range lables {
+		label = fmt.Sprintf("%s=%s", key, value)
+		break
+	}
+	return label
 }
