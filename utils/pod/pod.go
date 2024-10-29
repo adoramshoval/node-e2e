@@ -6,11 +6,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func CreateContainerSpec(containerName string, image string, mounts []v1.VolumeMount, ports []v1.ContainerPort, resources v1.ResourceRequirements, args ...string) v1.Container {
+func GenDefaultContainer(containerName string, image string, mounts []v1.VolumeMount, ports []v1.ContainerPort, resources v1.ResourceRequirements, args ...string) *v1.Container {
 	if len(args) == 0 {
 		args = []string{"pause"}
 	}
-	return v1.Container{
+	return &v1.Container{
 		Name:            containerName,
 		Image:           image,
 		Args:            args,
@@ -22,22 +22,9 @@ func CreateContainerSpec(containerName string, image string, mounts []v1.VolumeM
 	}
 }
 
-// CreatePod gets pod metadata and specification as arguments and creates a Pod struct. This is a variadic function as it accepts N number of containers.
-// Returns: pointer (*) to v1.Pod (https://pkg.go.dev/k8s.io/api/core/v1#Pod)
-func CreatePod(ns string, podName string, volumes []v1.Volume, containers ...v1.Container) *v1.Pod {
-
-	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      podName,
-			Namespace: ns,
-		},
-		Spec: *CreatePodSpec(volumes, containers...),
-	}
-	return pod
-}
-
-func CreatePodSpec(volumes []v1.Volume, containers ...v1.Container) *v1.PodSpec {
-	// immediate := int64(0)
+// This function is used to create default corev1.PodSpec for many pod controllers. The term default is used in order to indicate this is a basic form
+// of corev1.PodSpec. A pointer is returned, and the returned object can be patched with relevant and needed changes.
+func GenDefaultPodSpec(volumes []v1.Volume, containers ...v1.Container) *v1.PodSpec {
 	var defaultTerminationGracePeriod int64 = 30
 	return &v1.PodSpec{
 		Containers:                    containers[:],
@@ -45,4 +32,17 @@ func CreatePodSpec(volumes []v1.Volume, containers ...v1.Container) *v1.PodSpec 
 		SecurityContext:               &v1.PodSecurityContext{},
 		TerminationGracePeriodSeconds: &defaultTerminationGracePeriod,
 	}
+}
+
+// CreatePod gets pod metadata and specification as arguments and creates a Pod struct. This is a variadic function as it accepts N number of containers.
+// Returns: pointer (*) to v1.Pod (https://pkg.go.dev/k8s.io/api/core/v1#Pod)
+func GenDefaultPod(ns string, podName string, volumes []v1.Volume, containers ...v1.Container) *v1.Pod {
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: ns,
+		},
+		Spec: *GenDefaultPodSpec(volumes, containers...),
+	}
+	return pod
 }
