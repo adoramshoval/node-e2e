@@ -1,4 +1,4 @@
-package createdaemonset_test
+package deployment_rollout
 
 import (
 	"context"
@@ -13,13 +13,19 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 )
 
+const (
+	namespace          string = "default"
+	saName             string = "dep-manager"
+	crPath             string = "testdata/dep-manager-cr.yaml"
+	testImage          string = "quay.med.one:8443/openshift/ubi8/ubi"
+	deploymentReplicas int32  = 3
+)
+
 var (
 	testsEnvironment env.Environment
-	namespace        string            = "default"
-	saName           string            = "dep-manager"
-	crPath           string            = "testdata/dep-manager-cr.yaml"
+	workloadName     string            = envconf.RandomName(saName, 20)
 	testLabels       map[string]string = map[string]string{
-		"test": envconf.RandomName(saName, 20),
+		"test": workloadName,
 	}
 	pollIntervalSeconds int64 = 10
 	pollTimeoutMinutes  int64 = 2
